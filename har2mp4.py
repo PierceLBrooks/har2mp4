@@ -3,16 +3,94 @@
 
 import os
 import sys
+import copy
 import json
 import base64
 import shutil
+import hashlib
 import inspect
 import logging
 import threading
 import traceback
 import subprocess
+import multiprocessing
 from urllib.parse import urlparse
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
+from bounded_pool_executor import BoundedProcessPoolExecutor
+
+mutex = threading.Lock()
+requests = []
+
+class Responder(SimpleHTTPRequestHandler):
+  def __init__(self, *args, **kwargs):
+    super(SimpleHTTPRequestHandler, self).__init__(*args, **kwargs)
+    self.directory = os.getcwd()
+
+  def __getattr__(self, attribute):
+    if (str(attribute) == "directory"):
+      return os.getcwd()
+    return super(SimpleHTTPRequestHandler, self).__getattribute__(attribute)
+
+  def do_GET(self):
+    global mutex
+    global requests
+    clone = None
+    try:
+      try:
+        clone = copy.deepcopy(super())
+      except:
+        clone = None
+      request = str(copy.deepcopy(self.path))
+      mutex.acquire()
+      requests.append(request)
+      mutex.release()
+      hasher = hashlib.sha1()
+      hasher.update(os.path.dirname(request).encode())
+      request = os.path.join(hash.hexdigest(), os.path.basename(request))
+      self.path = request
+      super().do_GET()
+      #print(str(clone))
+    except:
+      #logging.error(traceback.format_exc())
+      try:
+        if (clone == None):
+          super().do_GET()
+        else:
+          clone.do_GET()
+      except:
+        pass
+
+def resolve(promises):
+  for promise in promises:
+    try:
+      yield promise.result()
+    except:
+      pass
+
+def execute(command):
+  lines = []
+  output = None
+  try:
+    process = subprocess.Popen(command, env=dict(os.environ.copy()), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    while True:
+      line = process.stdout.readline()
+      if ((len(line) == 0) and not (process.poll() == None)):
+        break
+      try:
+        line = line.decode("UTF-8").strip()
+      except:
+        continue
+      lines.append(line)
+    status = process.communicate()[0]
+    exit = process.returncode
+    if (exit == 0):
+      output = status
+  except:
+    #logging.error(traceback.format_exc())
+    output = []
+  if (output == None):
+    return []
+  return lines
 
 def handle(httpd):
   try:
@@ -21,6 +99,8 @@ def handle(httpd):
     httpd = None
 
 def run(target, root):
+  global mutex
+  global requests
   #print(root)
   data = None
   content = ""
@@ -53,7 +133,9 @@ def run(target, root):
   manifests = []
   outputs = []
   errors = []
+  urls = []
   for entry in entries:
+    urls.append(None)
     if not ("request" in entry):
       errors.append(1)
       continue
@@ -62,6 +144,7 @@ def run(target, root):
       errors.append(2)
       continue
     url = str(request["url"])
+    urls[len(urls)-1] = url
     #print(url)
     if (url in mapping):
       errors.append(3)
@@ -95,7 +178,13 @@ def run(target, root):
       parse = urlparse(url)
       if (parse.path.endswith(".m3u8")):
         manifest = True
-      path += parse.path
+      if (sys.flags.debug):
+        requests.append(parse.path)
+        path += requests[len(requests)-1]
+      else:
+        hasher = hashlib.sha1()
+        hasher.update(os.path.dirname(parse.path).encode())
+        path = os.path.join(path, os.path.join(hasher.hexdigest(), os.path.basename(parse.path)))
       #print(path)
       if not (os.path.exists(path)):
         try:
@@ -107,7 +196,8 @@ def run(target, root):
       else:
         descriptor = open(path, "wb")
     except:
-      #logging.error(traceback.format_exc())
+      if (sys.flags.debug):
+        logging.error(traceback.format_exc())
       descriptor = None
     if (descriptor == None):
       try:
@@ -150,19 +240,22 @@ def run(target, root):
     descriptor.close()
     mapping[url] = path
     errors.append(0)
-  """
-  for error in errors:
-    print(str(error))
-  for key in mapping:
-    print(key+" -> "+mapping[key])
-  """
+  if (sys.flags.debug):
+    for i in range(len(errors)):
+      error = errors[i]
+      print(str(i)+" = "+str(error)+" @ "+str(urls[i]))
+    for key in mapping:
+      print(key+" -> "+mapping[key])
   if (len(manifests) == 0):
     return -6
   port = 8081
   httpd = None
   while (port < 9001):
     try:
-      httpd = ThreadingHTTPServer(("127.0.0.1", port), SimpleHTTPRequestHandler)
+      if (sys.flags.debug):
+        httpd = ThreadingHTTPServer(("127.0.0.1", port), SimpleHTTPRequestHandler)
+      else:
+        httpd = ThreadingHTTPServer(("127.0.0.1", port), Responder)
     except:
       httpd = None
     if not (httpd == None):
@@ -172,31 +265,53 @@ def run(target, root):
     return -7
   thread = threading.Thread(target=handle, args=[httpd])
   try:
-    thread.run()
+    thread.start()
   except:
     thread = None
   if (thread == None):
     return -8
-  for i in range(len(manifests)):
-    if not (manifests[i] in mapping):
-      continue
-    uri = os.path.relpath(mapping[manifests[i]], os.getcwd())
-    if (len(uri) < 2):
-      continue
-    if (uri[0:1] == "/"):
-      uri = uri[1:]
-    command = []
-    command.append("ffmpeg")
-    command.append("-i")
-    command.append("http://127.0.0.1:"+str(port)+"/"+uri)
-    command.append(os.path.join(os.getcwd(), outputs[i]+".mp4"))
-    try:
-      output = subprocess.check_output(command)
-      if not (output == None):
-        output = output.decode()
-        print(output)
-    except:
-      pass
+  tasks = []
+  with BoundedProcessPoolExecutor(max_workers=multiprocessing.cpu_count()) as worker:
+    for i in range(len(manifests)):
+      if not (manifests[i] in mapping):
+        continue
+      uri = os.path.relpath(mapping[manifests[i]], os.getcwd())
+      if (len(uri) < 2):
+        continue
+      if (uri[0:1] == "/"):
+        uri = uri[1:]
+      command = []
+      command.append("ffmpeg")
+      command.append("-allowed_extensions")
+      command.append("ALL")
+      if (sys.flags.debug):
+        command.append("-y")
+      else:
+        command.append("-nostdin")
+      command.append("-i")
+      command.append("http://127.0.0.1:"+str(port)+"/"+uri)
+      command.append(os.path.join(os.getcwd(), outputs[i]+".mp4"))
+      task = None
+      try:
+        task = worker.submit(execute, command)
+      except:
+        task = None
+      tasks.append(task)
+    for task in tasks:
+      if (task == None):
+        continue
+      try:
+        futures = resolve([task])
+        for future in futures:
+          for line in future:
+            print(str(line))
+      except:
+        pass
+  if (sys.flags.debug):
+    mutex.acquire()
+    for request in requests:
+      print(request)
+    mutex.release()
   try:
     httpd.shutdown()
     thread.join()
@@ -234,7 +349,13 @@ def launch(arguments):
   if (len(script) == 0):
     return False
   if (os.path.exists(root)):
-    return False
+    if (sys.flags.debug):
+      try:
+        shutil.rmtree(root)
+      except:
+        pass
+    else:
+      return False
   try:
     os.makedirs(root)
   except:
@@ -248,12 +369,11 @@ def launch(arguments):
     logging.error(traceback.format_exc())
     result = None
   print(str(result))
-  """
-  try:
-    shutil.rmtree(root)
-  except:
-    pass
-  """
+  if not (sys.flags.debug):
+    try:
+      shutil.rmtree(root)
+    except:
+      pass
   if not (result == 0):
     return False
   return True
