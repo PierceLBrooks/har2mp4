@@ -1,2 +1,3 @@
 bounded_pool_executor>=0.0.3
+mpegdash>=0.4.0
 

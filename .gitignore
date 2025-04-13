@@ -1,6 +1,8 @@
 .DS_Store
 *.har
 *.mp4
+/*.m3u8
+/*.mpd
 /har2mp4
 
 # Byte-compiled  optimized DLL files
