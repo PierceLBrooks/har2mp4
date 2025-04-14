@@ -1,6 +1,6 @@
 .DS_Store
-*.har
 *.mp4
+/*.har
 /*.m3u8
 /*.mpd
 /_har2mp4
