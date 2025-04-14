@@ -347,14 +347,14 @@ def handle(parent, host, home, node, level):
         node.segment_lists = remove(node.segment_lists, removal)
     if (changes <= total):
       if not (front == None):
-        safe = False
+        safe = True
         for floor, folders, files in os.walk(os.path.join(directory, front)):
           for i in range(len(files)):
             full = os.path.join(floor, files[i])
             if full in hashes:
               full = hashes[full]
             if (node.id in full):
-              safe = True
+              safe = False
               extensions = []
               if not (parent == None):
                 if ("AdaptationSet" in str(type(parent))):
@@ -375,8 +375,6 @@ def handle(parent, host, home, node, level):
                     safe = True
                     break
               break
-          if (safe):
-            break
         if not (safe):
           if (total == 0):
             total += 1
@@ -895,8 +893,8 @@ def run(ffmpeg, script, target, root):
             mapping[manifests[i]] = None
         except:
           print("MPEG DASH manifest parse failure!")
-          #if (sys.flags.debug):
-          logging.error(traceback.format_exc())
+          if (sys.flags.debug):
+            logging.error(traceback.format_exc())
       else:
         lines = []
         try:
