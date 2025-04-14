@@ -525,7 +525,7 @@ def run(script, target, root):
     #directory = os.path.relpath(root, temporary)
     directory = temporary
     os.chdir(temporary)
-  print(directory)
+  #print(directory)
   if not (os.path.exists(directory)):
     return -9
   while (port < 9001):
@@ -599,8 +599,10 @@ def run(script, target, root):
                 base += line
               if (base[0:1] == "/"):
                 base = base[1:]
-              base = os.path.join(origin, os.path.join(os.path.dirname(uri), base))
+              base = os.path.join(directory, os.path.join(os.path.dirname(uri), base))
               if not (os.path.exists(base)):
+                #print(line)
+                #print(base)
                 continue
               descriptor.write(line+"\n")
             descriptor.close()
@@ -716,7 +718,10 @@ def launch(arguments):
   if (len(script) == 0):
     return False
   mimetypes.init()
-  mimetypes.add_type("application/dash+xml", ".mpd", strict=True)
+  try:
+    mimetypes.add_type("application/dash+xml", ".mpd", strict=True)
+  except:
+    pass
   if (os.path.exists(root)):
     try:
       shutil.rmtree(root)
