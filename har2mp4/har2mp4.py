@@ -44,7 +44,7 @@ except:
   temporary = ""
 
 # https://stackoverflow.com/a/22989322
-class LocalFileAdapter(requests.adapters.HTTPAdapter):
+class LocalFileAdapter(requester.adapters.HTTPAdapter):
   def build_response_from_file(self, request):
     file_path = request.url[7:]
     with open(file_path, "rb") as file:
