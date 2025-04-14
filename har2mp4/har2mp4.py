@@ -2,6 +2,7 @@
 # Author: Pierce Brooks
 
 import os
+import ast
 import sys
 import copy
 import json
@@ -377,8 +378,15 @@ def run(ffmpeg, script, target, root):
   if (len(target) == 0):
     print("HAR file target emptiness failure!")
     return -1
+  try:
+    if not (os.path.exists(target)):
+      literal = ast.literal_eval(target)
+      if (os.path.exists(literal)):
+        target = literal
+  except:
+    pass
   if not (os.path.exists(target)):
-    print("HAR file target accessibility failure!")
+    print("HAR file target accessibility failure (\"%s\")!"%tuple([target]))
     return -1
   try:
     descriptor = open(target, "r")
