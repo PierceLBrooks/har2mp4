@@ -837,9 +837,9 @@ def launch(arguments):
   result = 0
   root = ""
   if (sys.flags.debug):
-    root += os.path.join(os.getcwd(), script)
+    root += os.path.join(os.getcwd(), "_"+script)
   else:
-    root += os.path.join(temporary, script)
+    root += os.path.join(temporary, "_"+script)
     try:
       date = datetime.date.fromtimestamp(time.time()).strftime("%d/%m/%y@%H:%M:%S")
       hasher = hashlib.sha1()
@@ -891,6 +891,28 @@ def launch(arguments):
 
 def har2mp4(target):
   return launch([sys.argv[0], str(target)])
+
+def main(environment = None):
+  result = 0
+  try:
+    arguments = sys.argv
+    length = len(arguments)
+    if (length > 1):
+      data = []
+      if (length > 2):
+        data = arguments[2:]
+      if (environment == None):
+        environment = os.environ.copy()
+      code = har2mp4(arguments[1].strip())
+      if not (code):
+        print("Failure (\"%s\")! "%tuple([str(code)]))
+        result = -1
+    else:
+      result = -2
+  except:
+    logging.error(traceback.format_exc())
+    result = -3
+  return result
 
 if (__name__ == "__main__"):
   try:
