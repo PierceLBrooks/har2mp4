@@ -5,6 +5,7 @@ import os
 import sys
 import copy
 import json
+import math
 import time
 import base64
 import shutil
@@ -21,6 +22,7 @@ import traceback
 import mimetypes
 import subprocess
 import multiprocessing
+from ctypes.wintypes import MAX_PATH
 from urllib.parse import urlparse
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from bounded_pool_executor import BoundedProcessPoolExecutor
@@ -28,6 +30,7 @@ from mpegdash.parser import MPEGDASHParser
 
 directory = os.getcwd()
 mutex = threading.Lock()
+reports = []
 requests = []
 temporary = ""
 try:
@@ -117,8 +120,15 @@ def resolve(promises):
       pass
 
 def execute(command):
+  global mutex
+  global reports
   lines = []
   output = None
+  if (len(command) == 0):
+    mutex.acquire()
+    reports.append("Command parameter population threshold failure!")
+    mutex.release()
+    return lines
   try:
     process = subprocess.Popen(command, env=dict(os.environ.copy()), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     while True:
@@ -134,6 +144,10 @@ def execute(command):
     exit = process.returncode
     if (exit == 0):
       output = status
+    else:
+      mutex.acquire()
+      reports.append("\"%s\" execution with invokation \"%s\" failure (%s)!"%tuple([str(command[i]), str(command), str(exit)]))
+      mutex.release()
   except:
     #logging.error(traceback.format_exc())
     output = []
@@ -141,11 +155,11 @@ def execute(command):
     return []
   return lines
 
-def serve(httpd):
+def serve(server):
   try:
-    httpd.serve_forever()
+    server.serve_forever()
   except:
-    httpd = None
+    server = None
 
 def test(source):
   success = True
@@ -175,7 +189,7 @@ def remove(victim, location):
   change += victim[:location]+victim[(location+1):]
   return change
 
-def handle(http, mpd, node, level):
+def handle(host, home, node, level):
   if (node == None):
     return node
   this = ""
@@ -186,20 +200,20 @@ def handle(http, mpd, node, level):
     if not (node.base_url_value == None):
       this += node.base_url_value
       total += 1
-      if not (test(http+os.path.join(mpd, node.base_url_value))):
+      if not (test(host+os.path.join(home, node.base_url_value))):
         changes += 1
   elif ("URL" in kind):
     if not (node.sourceURL == None):
       this += node.sourceURL
       total += 1
-      if not (test(http+os.path.join(mpd, node.sourceURL))):
+      if not (test(host+os.path.join(home, node.sourceURL))):
         changes += 1
   elif ("Period" in kind):
     if not (node.base_urls == None):
       removals = []
       for i in range(len(node.base_urls)):
         total += 1
-        if (handle(http, mpd, node.base_urls[i], level+1) == None):
+        if (handle(host, home, node.base_urls[i], level+1) == None):
           changes += 1
           removals.append(i)
       for removal in removals:
@@ -208,7 +222,7 @@ def handle(http, mpd, node, level):
       removals = []
       for i in range(len(node.adaptation_sets)):
         total += 1
-        if (handle(http, mpd, node.adaptation_sets[i], level+1) == None):
+        if (handle(host, home, node.adaptation_sets[i], level+1) == None):
           changes += 1
           removals.append(i)
       for removal in removals:
@@ -218,7 +232,7 @@ def handle(http, mpd, node, level):
       removals = []
       for i in range(len(node.base_urls)):
         total += 1
-        if (handle(http, mpd, node.base_urls[i], level+1) == None):
+        if (handle(host, home, node.base_urls[i], level+1) == None):
           changes += 1
           removals.append(i)
       for removal in removals:
@@ -227,7 +241,7 @@ def handle(http, mpd, node, level):
       removals = []
       for i in range(len(node.representations)):
         total += 1
-        if (handle(http, mpd, node.representations[i], level+1) == None):
+        if (handle(host, home, node.representations[i], level+1) == None):
           changes += 1
           removals.append(i)
       for removal in removals:
@@ -237,7 +251,7 @@ def handle(http, mpd, node, level):
       removals = []
       for i in range(len(node.base_urls)):
         total += 1
-        if (handle(http, mpd, node.base_urls[i], level+1) == None):
+        if (handle(host, home, node.base_urls[i], level+1) == None):
           changes += 1
           removals.append(i)
       for removal in removals:
@@ -247,7 +261,7 @@ def handle(http, mpd, node, level):
       removals = []
       for i in range(len(node.base_urls)):
         total += 1
-        if (handle(http, mpd, node.base_urls[i], level+1) == None):
+        if (handle(host, home, node.base_urls[i], level+1) == None):
           changes += 1
           removals.append(i)
       for removal in removals:
@@ -256,7 +270,7 @@ def handle(http, mpd, node, level):
       removals = []
       for i in range(len(node.periods)):
         total += 1
-        if (handle(http, mpd, node.periods[i], level+1) == None):
+        if (handle(host, home, node.periods[i], level+1) == None):
           changes += 1
           removals.append(i)
       for removal in removals:
@@ -305,11 +319,28 @@ def compare(left, right):
       return 1
   return 0
 
-def run(script, target, root):
+def run(ffmpeg, script, target, root):
   global directory
   global mutex
+  global reports
   global requests
   global temporary
+  extent = sys.maxsize
+  limit = sys.maxsize
+  try:
+    if (platform.system().lower().strip() == "windows"):
+      extent = MAX_PATH
+    else:
+      extent = os.pathconf("/", "PC_PATH_MAX")
+  except:
+    extent = sys.maxsize
+  try:
+    if (platform.system().lower().strip() == "windows"):
+      limit = MAX_PATH
+    else:
+      limit = os.pathconf("/", "PC_LIMIT_MAX")
+  except:
+    limit = sys.maxsize
   origin = os.getcwd()
   #print(root)
   data = None
@@ -341,10 +372,13 @@ def run(script, target, root):
           pass
     target = final
   if (target == script):
+    print("HAR file target uniqueness failure!")
     return -1
   if (len(target) == 0):
+    print("HAR file target emptiness failure!")
     return -1
   if not (os.path.exists(target)):
+    print("HAR file target accessibility failure!")
     return -1
   try:
     descriptor = open(target, "r")
@@ -358,17 +392,22 @@ def run(script, target, root):
     except:
       pass
   if (data == None):
+    print("Data failure!")
     return -2
   if not ("dict" in str(type(data)).lower()):
+    print("Data parse failure!")
     return -3
   #print(str(list(data.keys())))
   if not ("log" in data):
+    print("Log recording presence failure!")
     return -4
   data = data["log"]
   if not ("dict" in str(type(data)).lower()):
+    print("Log recording validation failure!")
     return -5
   #print(str(list(data.keys())))
   if not ("entries" in data):
+    print("Entry presence failure!")
     return -6
   entries = []
   try:
@@ -377,53 +416,67 @@ def run(script, target, root):
       entries[i] = [entries[i], i]
     entries = list(sorted(entries, key=functools.cmp_to_key(compare)))
   except:
+    print("Entry sorting failure!")
     entries = []
     logging.error(traceback.format_exc())
   if (len(entries) == 0):
+    print("Entry population threshold failure!")
     return -7
   mapping = {}
+  failures = {}
   manifests = []
   outputs = []
+  indices = []
   errors = []
+  codes = []
+  paths = []
+  names = []
   urls = []
   for i in range(len(entries)):
+    errors.append(0)
     entry = entries[i]
     index = entry[1]
     entry = entry[0]
+    indices.append(index)
+    names.append(None)
+    paths.append(None)
     urls.append(None)
+    codes.append(0)
     if (sys.flags.debug):
       print(str(i)+" = "+str(index))
     if not ("request" in entry):
-      errors.append(1)
+      errors[len(errors)-1] = 1
       continue
     request = entry["request"]
     if not ("url" in request):
-      errors.append(2)
+      errors[len(errors)-1] = 2
       continue
     url = str(request["url"])
     urls[len(urls)-1] = url
     #print(url)
     if not ("response" in entry):
-      errors.append(4)
+      errors[len(errors)-1] = 4
       continue
     response = entry["response"]
     append = False
     if ("status" in response):
-      if (str(response["status"]).strip() == "206"):
+      code = str(response["status"]).strip()
+      codes[len(codes)-1] = code
+      if (code == "206"):
         append = True
-      if not ((append) or (str(response["status"]).strip() == "200")):
-        errors.append(5)
+      if not ((append) or (code == "200")):
+        errors[len(errors)-1] = 5
         continue
     if not (append):
       if (url in mapping):
-        errors.append(3)
+        errors[len(errors)-1] = 3
         continue
     if not ("content" in response):
-      errors.append(6)
+      errors[len(errors)-1] = 6
       continue
     content = response["content"]
     if not ("text" in content):
-      errors.append(7)
+      errors[len(errors)-1] = 7
       continue
     text = str(content["text"])
     size = None
@@ -463,7 +516,14 @@ def run(script, target, root):
         mode += "w"
       if not (encoding == None):
         mode += "b"
-      descriptor = open(path, mode)
+      if ((len(path) < extent) and (len(os.path.basename(path)) < limit)):
+        descriptor = open(path, mode)
+      else:
+        paths[len(paths)-1] = path
+        if (len(os.path.basename(path)) >= limit):
+          errors[len(errors)-1] = 8
+        else:
+          errors[len(errors)-1] = 9
     except:
       if (sys.flags.debug):
         logging.error(traceback.format_exc())
@@ -473,7 +533,8 @@ def run(script, target, root):
         os.unlink(path)
       except:
         pass
-      errors.append(8)
+      if (errors[len(errors)-1] == 0):
+        errors[len(errors)-1] = 10
       continue
     if not (manifest):
       if ("mimeType" in content):
@@ -483,77 +544,135 @@ def run(script, target, root):
     if (manifest):
       name = os.path.basename(path)
       if (name in outputs):
-        try:
-          os.unlink(path)
-        except:
-          pass
-        errors.append(9)
-        continue
-      outputs.append(name)
-      manifests.append(url)
+        if not (append):
+          try:
+            os.unlink(path)
+          except:
+            pass
+          errors[len(errors)-1] = 11
+          continue
+      else:
+        outputs.append(name)
+        manifests.append(url)
     try:
-      if (str(encoding) == "base64"):
-        text = base64.b64decode(text)
+      try:
+        if (str(encoding) == "base64"):
+          text = base64.b64decode(text)
+      except:
+        if (sys.flags.debug):
+          logging.error(traceback.format_exc())
+        text = None
       if not (size == None):
         text = text[:size]
       descriptor.write(text)
     except:
+      if (sys.flags.debug):
+        logging.error(traceback.format_exc())
       descriptor = None
+    if (text == None):
+      try:
+        os.unlink(path)
+      except:
+        pass
+      errors[len(errors)-1] = 12
+      continue
     if (descriptor == None):
       try:
         os.unlink(path)
       except:
         pass
-      errors.append(10)
+      errors[len(errors)-1] = 13
       continue
     descriptor.close()
     mapping[url] = path
-    errors.append(0)
-  if (sys.flags.debug):
-    for i in range(len(errors)):
-      error = errors[i]
-      if (error == 0):
-        continue
+    paths[len(paths)-1] = path
+    names[len(names)-1] = os.path.basename(path)
+  for i in range(len(errors)):
+    error = errors[i]
+    if (error == 0):
+      continue
+    try:
+      failures[urls[i]] = error
+      if (error == 1):
+        print("Entry %i's request body inclusion failure!"%tuple([i]))
+      elif (error == 2):
+        print("Entry %i's URL inclusion failure!"%tuple([i]))
+      elif (error == 3):
+        print("Entry %i redundancy failure (\"%s\")!"%tuple([i, str(urls[i])]))
+      elif (error == 4):
+        print("Entry %i's response body inclusion failure!"%tuple([i]))
+      elif (error == 5):
+        print("Entry %i's status code correctness failure (\"%s\")!"%tuple([i, str(codes[i])]))
+      elif (error == 6):
+        print("Entry %i's content inclusion failure!"%tuple([i]))
+      elif (error == 7):
+        print("Entry %i's text inclusion failure!"%tuple([i]))
+      elif (error == 8):
+        print("Entry %i's extraction output name (\"%s\") length failure (%i >= %s)!"%tuple([i, str(paths[i]), len(os.path.basename(str(paths[i]))), limit]))
+      elif (error == 9):
+        print("Entry %i's extraction output path (\"%s\") length failure (%i >= %s)!"%tuple([i, str(paths[i]), len(str(paths[i])), extent]))
+      elif (error == 10):
+        print("Entry %i's extraction output failure (\"%s\")!"%tuple([i, str(paths[i])]))
+      elif (error == 11):
+        print("Entry %i's output name (\"%s\") uniqueness failure (\"%s\")!"%tuple([i, str(names[i]), str(urls[i])]))
+      elif (error == 12):
+        print("Entry %i's decoding failure!"%tuple([i]))
+      elif (error == 13):
+        print("Entry %i's output failure!"%tuple([i]))
+      else:
+        print("Unknown entry %i's extraction failure (%i)!"%tuple([i, error]))
+    except:
+      pass
+    if (sys.flags.debug):
       print(str(i)+" = "+str(error)+" @ "+str(urls[i]))
+  if (sys.flags.debug):
     for key in mapping:
       print(key+" -> "+mapping[key])
   if (len(manifests) == 0):
+    print("Extraction manifest population threshold failure!")
     return -8
   port = 8081
-  httpd = None
+  server = None
   if not (sys.flags.debug):
     #directory = os.path.relpath(root, temporary)
     directory = temporary
     os.chdir(temporary)
   #print(directory)
   if not (os.path.exists(directory)):
+    print("Root extraction directory usage failure!")
     return -9
   while (port < 9001):
     try:
       if (sys.flags.debug):
-        httpd = ThreadingHTTPServer(("127.0.0.1", port), SimpleHTTPRequestHandler)
+        server = ThreadingHTTPServer(("127.0.0.1", port), SimpleHTTPRequestHandler)
       else:
-        httpd = ThreadingHTTPServer(("127.0.0.1", port), Responder)
+        server = ThreadingHTTPServer(("127.0.0.1", port), Responder)
     except:
-      httpd = None
-    if not (httpd == None):
+      server = None
+    if not (server == None):
       break
     port += 1
-  if (httpd == None):
+  if (server == None):
+    print("HTTP server construction failure (%i)!"%tuple([port]))
     return -10
-  thread = threading.Thread(target=serve, args=[httpd])
+  thread = threading.Thread(target=serve, args=[server])
   try:
     thread.start()
   except:
     thread = None
   if (thread == None):
+    print("HTTP server initialization failure!")
     return -11
   tasks = []
   with BoundedProcessPoolExecutor(max_workers=multiprocessing.cpu_count()) as worker:
-    http = "http://127.0.0.1:"+str(port)+"/"
+    host = "http://127.0.0.1:"+str(port)+"/"
     for i in range(len(manifests)):
       if not (manifests[i] in mapping):
         continue
+      if (manifests[i] in failures):
+        failure = failures[manifests[i]]
+        if not (failure == 0):
+          continue
       #print(mapping[manifests[i]])
       uri = ""
       if (sys.flags.debug):
@@ -565,12 +684,18 @@ def run(script, target, root):
       mime = mimetypes.guess_type(os.path.basename(mapping[manifests[i]]).lower())[0]
       if (str(mime).lower().strip() == "application/dash+xml"):
         try:
-          mpd = MPEGDASHParser.parse(mapping[manifests[i]])
-          #print(str(mpd))
-          handle(http, os.path.relpath(os.path.dirname(mapping[manifests[i]]), directory), mpd, 0)
-          MPEGDASHParser.write(mpd, mapping[manifests[i]])
+          node = MPEGDASHParser.parse(mapping[manifests[i]])
+          #print(str(node))
+          node = handle(host, os.path.relpath(os.path.dirname(mapping[manifests[i]]), directory), node, 0)
+          if not (node == None):
+            MPEGDASHParser.write(node, mapping[manifests[i]])
+          else:
+            print("MPEG DASH manifest rewrite failure!")
+            mapping[manifests[i]] = None
         except:
-          logging.error(traceback.format_exc())
+          print("MPEG DASH manifest parse failure!")
+          if (sys.flags.debug):
+            logging.error(traceback.format_exc())
       else:
         lines = []
         try:
@@ -608,13 +733,15 @@ def run(script, target, root):
             descriptor.close()
           except:
             pass
+      if (mapping[manifests[i]] == None):
+        continue
       if not (os.path.exists(mapping[manifests[i]])):
         continue
       if (uri[0:1] == "/"):
         uri = uri[1:]
       if (len(uri) == 0):
         continue
-      uri = http+uri
+      uri = host+uri
       request = None
       try:
         request = requester.get(uri)
@@ -630,7 +757,7 @@ def run(script, target, root):
         mutex.release()
         continue
       command = []
-      command.append("ffmpeg")
+      command.append(ffmpeg)
       command.append("-allowed_extensions")
       command.append("ALL")
       if (sys.flags.debug):
@@ -662,9 +789,11 @@ def run(script, target, root):
   for request in requests:
     if (sys.flags.debug):
       print(str(request))
+  for report in reports:
+    print(str(request))
   mutex.release()
   try:
-    httpd.shutdown()
+    server.shutdown()
     thread.join()
   except:
     pass
@@ -674,10 +803,13 @@ def run(script, target, root):
 def launch(arguments):
   global temporary
   if (len(arguments) < 2):
+    print("CLI argument population threshold failure!")
     return False
   if (len(temporary) == 0):
+    print("Temporary directory existence failure!")
     return False
   if not (os.path.exists(temporary)):
+    print("Determination failure for existence of temporary directory!")
     return False
   ffmpeg = None
   try:
@@ -685,6 +817,7 @@ def launch(arguments):
   except:
     ffmpeg = None
   if (ffmpeg == None):
+    print("\"ffmpeg\" binary location discovery failure!")
     return False
   script = ""
   try:
@@ -716,6 +849,7 @@ def launch(arguments):
     except:
       pass
   if (len(script) == 0):
+    print("\"har2mp4.py\" script location discovery failure!")
     return False
   mimetypes.init()
   try:
@@ -732,10 +866,11 @@ def launch(arguments):
   except:
     pass
   if not (os.path.exists(root)):
+    print("Root extraction directory creation failure!")
     return False
   origin = os.getcwd()
   try:
-    result += run(inspect.getframeinfo(inspect.currentframe()).filename, target, root)
+    result += run(ffmpeg, inspect.getframeinfo(inspect.currentframe()).filename, target, root)
     #result *= 2
   except:
     logging.error(traceback.format_exc())
@@ -750,6 +885,7 @@ def launch(arguments):
       pass
   #"""
   if not (result == 0):
+    print("General operational failure!")
     return False
   return True
 
