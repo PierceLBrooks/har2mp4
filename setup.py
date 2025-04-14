@@ -26,6 +26,7 @@ try:
 except:
     content = ""
 requirements = []
+requirements.append("requests-testadapter")
 requirements.append("bounded_pool_executor")
 requirements.append("mpegdash")
 setup(name="har2mp4",

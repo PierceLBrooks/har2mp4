@@ -28,6 +28,7 @@ from urllib.parse import urlparse
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from bounded_pool_executor import BoundedProcessPoolExecutor
 from mpegdash.parser import MPEGDASHParser
+from requests_testadapter import Resp
 
 directory = os.getcwd()
 mutex = threading.Lock()
@@ -41,6 +42,21 @@ try:
     temporary += tempfile.gettempdir()
 except:
   temporary = ""
+
+# https://stackoverflow.com/a/22989322
+class LocalFileAdapter(requests.adapters.HTTPAdapter):
+  def build_response_from_file(self, request):
+    file_path = request.url[7:]
+    with open(file_path, "rb") as file:
+        buff = bytearray(os.path.getsize(file_path))
+        file.readinto(buff)
+        resp = Resp(buff)
+        r = self.build_response(request, resp)
+        return r
+
+  def send(self, request, stream=False, timeout=None, verify=True, cert=None, proxies=None):
+      return self.build_response_from_file(request)
+
 
 class Responder(SimpleHTTPRequestHandler):
   def __init__(self, *args, **kwargs):
@@ -346,7 +362,7 @@ def run(ffmpeg, script, target, root):
   #print(root)
   data = None
   content = ""
-  if ((target.startswith("http://")) or (target.startswith("https://"))):
+  if ((target.startswith("http://")) or (target.startswith("https://")) or (target.startswith("file://"))):
     final = ""
     try:
       parse = urlparse(target)
@@ -358,7 +374,9 @@ def run(ffmpeg, script, target, root):
       final += script
     if not (os.path.exists(final)):
       try:
-        request = requester.get(target, stream=True)
+        session = requester.session()
+        session.mount("file://", LocalFileAdapter())
+        request = session.get(target, stream=True)
         if (str(request.status_code).strip() == "200"):
           descriptor = open(final, "wb")
           for chunk in request:
