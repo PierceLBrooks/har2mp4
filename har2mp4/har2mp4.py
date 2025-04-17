@@ -242,170 +242,216 @@ def handle(parent, host, home, node, level):
       front = front.split("/")[:1][0]
   if ((len(front) == 0) or not (os.path.exists(os.path.join(directory, front)))):
     front = None
-  if ("BaseURL" in kind):
-    if not (node.base_url_value == None):
-      this += node.base_url_value
-      total += 1
-      if not (test(front, host+os.path.join(home, node.base_url_value))):
-        changes += 1
-  elif ("SegmentURL" in kind):
-    if not (node.media == None):
-      this += node.media
-      total += 1
-      if not (test(front, host+os.path.join(home, node.media))):
-        changes += 1
-  elif ("URL" in kind):
-    if not (node.sourceURL == None):
-      this += node.sourceURL
-      total += 1
-      if not (test(front, host+os.path.join(home, node.sourceURL))):
-        changes += 1
-  elif ("Period" in kind):
-    if not (node.base_urls == None):
-      removals = []
-      for i in range(len(node.base_urls)):
+  try:
+    if ("BaseURL" in kind):
+      if not (node.base_url_value == None):
+        this += str(node.base_url_value)
         total += 1
-        if (handle(node, host, home, node.base_urls[i], level+1) == None):
+        if not (test(front, host+os.path.join(home, node.base_url_value))):
           changes += 1
-          removals.append(i)
-      for removal in removals:
-        node.base_urls = remove(node.base_urls, removal)
-    if not (node.adaptation_sets == None):
-      removals = []
-      for i in range(len(node.adaptation_sets)):
+    elif ("SegmentURL" in kind):
+      if not (node.media == None):
+        this += str(node.media)
         total += 1
-        if (handle(node, host, home, node.adaptation_sets[i], level+1) == None):
+        if not (test(front, host+os.path.join(home, node.media))):
           changes += 1
-          removals.append(i)
-      for removal in removals:
-        node.adaptation_sets = remove(node.adaptation_sets, removal)
-    if not (node.segment_lists == None):
-      removals = []
-      for i in range(len(node.segment_lists)):
+    elif ("URL" in kind):
+      if not (node.sourceURL == None):
+        this += str(node.sourceURL)
         total += 1
-        if (handle(node, host, home, node.segment_lists[i], level+1) == None):
+        if not (test(front, host+os.path.join(home, node.sourceURL))):
           changes += 1
-          removals.append(i)
-      for removal in removals:
-        node.segment_lists = remove(node.segment_lists, removal)
-  elif ("SegmentList" in kind):
-    if not (node.segment_urls == None):
-      removals = []
-      for i in range(len(node.segment_urls)):
-        total += 1
-        if (handle(node, host, home, node.segment_urls[i], level+1) == None):
-          changes += 1
-          removals.append(i)
-      for removal in removals:
-        node.segment_urls = remove(node.segment_urls, removal)
-  elif ("AdaptationSet" in kind):
-    if not (node.base_urls == None):
-      removals = []
-      for i in range(len(node.base_urls)):
-        total += 1
-        if (handle(node, host, home, node.base_urls[i], level+1) == None):
-          changes += 1
-          removals.append(i)
-      for removal in removals:
-        node.base_urls = remove(node.base_urls, removal)
-    if not (node.representations == None):
-      removals = []
-      for i in range(len(node.representations)):
-        total += 1
-        if (handle(node, host, home, node.representations[i], level+1) == None):
-          changes += 1
-          removals.append(i)
-      for removal in removals:
-        node.representations = remove(node.representations, removal)
-    if not (node.segment_lists == None):
-      removals = []
-      for i in range(len(node.segment_lists)):
-        total += 1
-        if (handle(node, host, home, node.segment_lists[i], level+1) == None):
-          changes += 1
-          removals.append(i)
-      for removal in removals:
-        node.segment_lists = remove(node.segment_lists, removal)
-  elif ("Representation" in kind):
-    if not (node.base_urls == None):
-      removals = []
-      for i in range(len(node.base_urls)):
-        total += 1
-        if (handle(node, host, home, node.base_urls[i], level+1) == None):
-          changes += 1
-          removals.append(i)
-      for removal in removals:
-        node.base_urls = remove(node.base_urls, removal)
-    if not (node.segment_lists == None):
-      removals = []
-      for i in range(len(node.segment_lists)):
-        total += 1
-        if (handle(node, host, home, node.segment_lists[i], level+1) == None):
-          changes += 1
-          removals.append(i)
-      for removal in removals:
-        node.segment_lists = remove(node.segment_lists, removal)
-    if (changes <= total):
-      if not (front == None):
-        safe = True
-        for floor, folders, files in os.walk(os.path.join(directory, front)):
-          for i in range(len(files)):
-            full = os.path.join(floor, files[i])
-            if full in hashes:
-              full = hashes[full]
-            if (node.id in full):
-              safe = False
-              extensions = []
-              if not (parent == None):
-                if ("AdaptationSet" in str(type(parent))):
-                  if not (parent.segment_templates == None):
-                    for j in range(len(parent.segment_templates)):
-                      media = parent.segment_templates[j].media
-                      if (media == None):
-                        continue
-                      if not ("." in media):
-                        continue
-                      media = media[media.rindex("."):]
-                      if not (media in extensions):
-                        extensions.append(media)
-              if (len(extensions) > 0):
-                safe = False
-                for extension in extensions:
-                  if (full.endswith(extension)):
-                    safe = True
+    elif ("Period" in kind):
+      if not (node.base_urls == None):
+        removals = []
+        for i in range(len(node.base_urls)):
+          total += 1
+          if (handle(node, host, home, node.base_urls[i], level+1) == None):
+            changes += 1
+            removals.append(i)
+        for i in range(len(removals)):
+          node.base_urls = remove(node.base_urls, removals[i]-i)
+      if not (node.adaptation_sets == None):
+        removals = []
+        for i in range(len(node.adaptation_sets)):
+          total += 1
+          if (handle(node, host, home, node.adaptation_sets[i], level+1) == None):
+            changes += 1
+            removals.append(i)
+        for i in range(len(removals)):
+          node.adaptation_sets = remove(node.adaptation_sets, removals[i]-i)
+      if not (node.segment_lists == None):
+        removals = []
+        for i in range(len(node.segment_lists)):
+          total += 1
+          if (handle(node, host, home, node.segment_lists[i], level+1) == None):
+            changes += 1
+            removals.append(i)
+        for i in range(len(removals)):
+          node.segment_lists = remove(node.segment_lists, removals[i]-i)
+    elif ("SegmentTemplate" in kind):
+      if not (node.media == None):
+        this += str(node.media)
+    elif ("SegmentList" in kind):
+      if not (node.segment_urls == None):
+        removals = []
+        for i in range(len(node.segment_urls)):
+          total += 1
+          if (handle(node, host, home, node.segment_urls[i], level+1) == None):
+            changes += 1
+            removals.append(i)
+        for i in range(len(removals)):
+          node.segment_urls = remove(node.segment_urls, removals[i]-i)
+    elif ("AdaptationSet" in kind):
+      if not (node.base_urls == None):
+        removals = []
+        for i in range(len(node.base_urls)):
+          total += 1
+          if (handle(node, host, home, node.base_urls[i], level+1) == None):
+            changes += 1
+            removals.append(i)
+        for i in range(len(removals)):
+          node.base_urls = remove(node.base_urls, removals[i]-i)
+      if not (node.representations == None):
+        removals = []
+        for i in range(len(node.representations)):
+          total += 1
+          if (handle(node, host, home, node.representations[i], level+1) == None):
+            changes += 1
+            removals.append(i)
+        for i in range(len(removals)):
+          node.representations = remove(node.representations, removals[i]-i)
+      if not (node.segment_lists == None):
+        removals = []
+        for i in range(len(node.segment_lists)):
+          total += 1
+          if (handle(node, host, home, node.segment_lists[i], level+1) == None):
+            changes += 1
+            removals.append(i)
+        for i in range(len(removals)):
+          node.segment_lists = remove(node.segment_lists, removals[i]-i)
+      if not (node.segment_templates == None):
+        removals = []
+        for i in range(len(node.segment_templates)):
+          total += 1
+          if (handle(node, host, home, node.segment_templates[i], level+1) == None):
+            changes += 1
+            removals.append(i)
+        for i in range(len(removals)):
+          node.segment_templates = remove(node.segment_templates, removals[i]-i)
+    elif ("Representation" in kind):
+      this += str(node.id)
+      if not (node.base_urls == None):
+        removals = []
+        for i in range(len(node.base_urls)):
+          total += 1
+          if (handle(node, host, home, node.base_urls[i], level+1) == None):
+            changes += 1
+            removals.append(i)
+        for i in range(len(removals)):
+          node.base_urls = remove(node.base_urls, removals[i]-i)
+      if not (node.segment_lists == None):
+        removals = []
+        for i in range(len(node.segment_lists)):
+          total += 1
+          if (handle(node, host, home, node.segment_lists[i], level+1) == None):
+            changes += 1
+            removals.append(i)
+        for i in range(len(removals)):
+          node.segment_lists = remove(node.segment_lists, removals[i]-i)
+      if (changes <= total):
+        if not (front == None):
+          safe = True
+          extensions = []
+          if not (parent == None):
+            if ("AdaptationSet" in str(type(parent))):
+              if not (parent.segment_templates == None):
+                for i in range(len(parent.segment_templates)):
+                  media = parent.segment_templates[i].media
+                  if (media == None):
+                    continue
+                  if not ("." in media):
+                    continue
+                  media = media[media.rindex("."):]
+                  if not (media in extensions):
+                    extensions.append(media)
+              if not (parent.representations == None):
+                for i in range(len(parent.representations)):
+                  if (parent.representations[i] == node):
+                    continue
+                  for floor, folders, files in os.walk(os.path.join(directory, front)):
+                    for j in range(len(files)):
+                      full = os.path.join(floor, files[j])
+                      if full in hashes:
+                        full = hashes[full]
+                      full = full.replace("\\", "/")
+                      fulls = []
+                      if ("/" in full):
+                        fulls += full.split("/")
+                      else:
+                        fulls += [full]
+                      if ((parent.representations[i].id in fulls) or (parent.representations[i].id in files[j])):
+                        safe = False
+                        break
+                    if not (safe):
+                      break
+                  if not (safe):
                     break
-              break
-        if not (safe):
-          if (total == 0):
-            total += 1
-          changes = total
-  elif ("MPEGDASH" in kind):
-    if not (node.base_urls == None):
-      removals = []
-      for i in range(len(node.base_urls)):
-        total += 1
-        if (handle(node, host, home, node.base_urls[i], level+1) == None):
-          changes += 1
-          removals.append(i)
-      for removal in removals:
-        node.base_urls = remove(node.base_urls, removal)
-    if not (node.periods == None):
-      removals = []
-      for i in range(len(node.periods)):
-        total += 1
-        if (handle(node, host, home, node.periods[i], level+1) == None):
-          changes += 1
-          removals.append(i)
-      for removal in removals:
-        node.periods = remove(node.periods, removal)
-  else:
-    return node
-  if (total == 0):
-    return node
+          for floor, folders, files in os.walk(os.path.join(directory, front)):
+            for i in range(len(files)):
+              full = os.path.join(floor, files[i])
+              if full in hashes:
+                full = hashes[full]
+              full = full.replace("\\", "/")
+              fulls = []
+              if ("/" in full):
+                fulls += full.split("/")
+              else:
+                fulls += [full]
+              if ((node.id in fulls) or (node.id in files[i])):
+                safe = True
+                if (len(extensions) > 0):
+                  safe = False
+                  for extension in extensions:
+                    if (full.endswith(extension)):
+                      safe = True
+                      break
+                break
+          if not (safe):
+            if (total == 0):
+              total += 1
+            changes = total
+    elif ("MPEGDASH" in kind):
+      if not (node.base_urls == None):
+        removals = []
+        for i in range(len(node.base_urls)):
+          total += 1
+          if (handle(node, host, home, node.base_urls[i], level+1) == None):
+            changes += 1
+            removals.append(i)
+        for i in range(len(removals)):
+          node.base_urls = remove(node.base_urls, removals[i]-i)
+      if not (node.periods == None):
+        removals = []
+        for i in range(len(node.periods)):
+          total += 1
+          if (handle(node, host, home, node.periods[i], level+1) == None):
+            changes += 1
+            removals.append(i)
+        for i in range(len(removals)):
+          node.periods = remove(node.periods, removals[i]-i)
+    else:
+      total = 0
+  except:
+    if (sys.flags.debug):
+      logging.error(traceback.format_exc())
+    total = 0
   if (len(this) == 0):
     this += kind
   if (sys.flags.debug):
     print(this+" @ "+str(level)+" = "+str(changes)+" / "+str(total))
+  if (total == 0):
+    return node
   if (changes >= total):
     return None
   return node
@@ -960,8 +1006,8 @@ def run(ffmpeg, script, target, root):
       command.append("-allowed_extensions")
       command.append("ALL")
       if (sys.flags.debug):
-        #command.append("-loglevel")
-        #command.append("debug")
+        command.append("-loglevel")
+        command.append("debug")
         command.append("-y")
       else:
         command.append("-nostdin")
