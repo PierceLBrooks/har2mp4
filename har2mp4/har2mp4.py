@@ -5,11 +5,13 @@ import os
 import ast
 import sys
 import copy
+import glob
 import json
 import math
 import time
 import base64
 import shutil
+import fnmatch
 import hashlib
 import inspect
 import logging
@@ -125,10 +127,10 @@ class Responder(SimpleHTTPRequestHandler):
       except:
         pass
 
-#"""
+"""
   def log_message(self, format, *args):
     pass
-#"""
+"""
 
 def resolve(promises):
   for promise in promises:
@@ -210,6 +212,13 @@ def test(front, source):
   if ((sys.flags.debug) and not (success)):
     print(source)
   return success
+
+def unique(duplicates):
+  uniques = []
+  for duplicate in duplicates:
+    if not (duplicate in uniques):
+      uniques.append(duplicate)
+  return uniques
 
 def remove(victim, location):
   if (location >= len(victim)):
@@ -1127,20 +1136,39 @@ def launch(arguments):
     return False
   origin = os.getcwd()
   try:
-    result += run(ffmpeg, inspect.getframeinfo(inspect.currentframe()).filename, target, root)
+    targets = []
+    if (("*" in target) and not ((target.startswith("http://")) or (target.startswith("https://")) or (target.startswith("file://")))):
+      target = target.replace("\\", "/")
+      if (("/" in target) or (os.path.isabs(target))):
+        recursion = False
+        if ("**" in target):
+          recursion = True
+        targets += glob.glob(target, recursive=recursion)
+      else:
+        for floor, folders, files in os.walk(os.getcwd()):
+          for i in range(len(files)):
+            if (fnmatch.fnmatch(files[i], os.path.basename(target))):
+              targets.append(os.path.join(floor, files[i]))
+          break
+      if (len(targets) > 1):
+        targets = unique(targets)
+    else:
+      targets.append(target)
+    for i in range(len(targets)):
+      result += run(ffmpeg, inspect.getframeinfo(inspect.currentframe()).filename, targets[i], root)
     #result *= 2
   except:
     logging.error(traceback.format_exc())
     result = None
   os.chdir(origin)
   print(str(result))
-  #"""
+  """
   if not (sys.flags.debug):
     try:
       shutil.rmtree(root)
     except:
       pass
-  #"""
+  """
   if not (result == 0):
     print("General operational failure!")
     return False
