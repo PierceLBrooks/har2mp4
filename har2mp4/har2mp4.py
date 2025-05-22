@@ -13,6 +13,7 @@ import base64
 import shutil
 import fnmatch
 import hashlib
+import pathlib
 import inspect
 import logging
 import datetime
@@ -567,8 +568,25 @@ def run(ffmpeg, script, target, root):
   except:
     pass
   if not (os.path.exists(target)):
-    print("HAR file target accessibility failure (\"%s\")!"%tuple([target]))
-    return -1
+    if not (platform.system().lower().strip() == "windows"):
+      if (target.startswith("~")):
+        target = target.split("/")
+        if not (target[0] == "~"):
+          target = None
+        else:
+          target[0] = str(pathlib.Path.home())
+          if (len(target) > 1):
+            target = os.path.join(target[0], "/".join(target[1:]))
+          else:
+            target = target[0]
+          if not (os.path.exists(target)):
+            target = None
+        if (target == None):
+          print("HAR file target accessibility failure!")
+          return -1
+    else:
+      print("HAR file target accessibility failure (\"%s\")!"%tuple([target]))
+      return -1
   try:
     descriptor = open(target, "r")
     content += descriptor.read()
