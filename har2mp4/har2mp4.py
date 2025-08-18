@@ -1032,6 +1032,8 @@ def run(ffmpeg, script, target, root):
       command.append(ffmpeg)
       command.append("-allowed_extensions")
       command.append("ALL")
+      command.append("-protocol_whitelist")
+      command.append("file,http,https,crypto,tcp,tls")
       if (sys.flags.debug):
         command.append("-loglevel")
         command.append("debug")
