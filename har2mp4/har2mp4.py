@@ -9,6 +9,7 @@ import glob
 import json
 import math
 import time
+import shlex
 import base64
 import shutil
 import fnmatch
@@ -167,7 +168,7 @@ def execute(command):
       output = status
     else:
       mutex.acquire()
-      reports.append("\"%s\" execution with invokation \"%s\" failure (%s)!"%tuple([str(command[i]), str(command), str(exit)]))
+      reports.append("Execution with invokation \"%s\" failure (%s)!"%tuple([shlex.join(command), str(exit)]))
       mutex.release()
   except:
     #logging.error(traceback.format_exc())
