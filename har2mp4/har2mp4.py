@@ -1067,7 +1067,7 @@ def run(ffmpeg, script, target, root):
     if (sys.flags.debug):
       print(str(request))
   for report in reports:
-    print(str(request))
+    print(str(report))
   mutex.release()
   try:
     server.shutdown()
